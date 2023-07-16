@@ -27,4 +27,4 @@ def send_message(to_number, body_text):
             )
         logger.info(f"Message sent to {to_number}: {message.body}")
     except Exception as e:
-        logger.error(f"Error sending message to {to_number}: {e}")
+        logger.error(f"Error sending message to {to_number} from {twilio_number}: Text was {body_text} Error was: {e}")

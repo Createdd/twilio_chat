@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 import openai
 
 load_dotenv()
-openai.api_key = os.environ.get('OPENAI_KEY')
+openai.api_key = os.environ.get('OPENAI_API_KEY')
 completion = openai.ChatCompletion()
 
 start_chat_log = [
