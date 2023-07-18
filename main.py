@@ -66,3 +66,6 @@ async def reply(request: Request, Body: str = Form(), db: Session = Depends(get_
         logger.error(f"Error storing conversation in database: {e}")
     send_message(whatsapp_number, chatgpt_response)
     return ""
+
+
+
