@@ -13,7 +13,6 @@ import logging
 # from fastapi.responses import JSONResponse
 # from fastapi.logger import logger as fastapi_logger
 
-CALD_API_TOKEN = config("CALENDLY")
 app = FastAPI()
 
 # Configure the root logger
