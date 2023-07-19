@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 from pydantic import BaseModel
 import logging
 
+from nylas_integration import check_time_and_book
+
 
 # from fastapi import FastAPI, HTTPException
 # from fastapi.responses import JSONResponse
@@ -23,8 +25,10 @@ logger = logging.getLogger('app')
 
 
 
-class Question(BaseModel):
-    msg: str
+class BookingRequest(BaseModel):
+    calendar_id: str
+    time: str
+    name: str
 
 
 @app.get("/")
@@ -36,11 +40,20 @@ async def index():
     return {"msg": "available?"}
 
 @app.post("/check_availability")
-async def check_availability(booking_request:Question):
+async def check_availability(booking_request: BookingRequest):
     # date = booking_request.date
     # time = booking_request.time
 
-    print(booking_request)
+    print(type(booking_request))
+
+    time = booking_request.time
+    calendar_id = booking_request.calendar_id
+    name = booking_request.name
+
+
+    # print(booking_request)
+    # print(time, calendar_id, name)
+    print(check_time_and_book(calendar_id, time, name))
 
 
     # if not is_valid_datetime(date, time):
@@ -50,36 +63,36 @@ async def check_availability(booking_request:Question):
     #     alternatives = get_alternatives(date, time)
     #     return {"available": False, "alternatives": alternatives}
 
-    if is_available(booking_request.msg):
-        return {"available": True}
+    # if is_available(booking_request.msg):
+    #     return {"available": True}
+    #
+    #
+    # return {"available": False}
 
-
-    return {"available": False}
-
-def is_available(iso_datetime: str) -> bool:
-    start_time = parser.parse(iso_datetime)
-    start_time = start_time + timedelta(hours=-2)
-    end_time = start_time + timedelta(minutes=30)
-    print(start_time, end_time, 'start and endtime')
-
-    url = "https://api.calendly.com/scheduled_events"
-    headers = {"Authorization": f"Bearer {CALD_API_TOKEN}"}
-
-    params = {
-        "min_start_time": start_time,
-        "max_end_time": end_time
-    }
-
-    response = requests.get(url, headers=headers, params=params)
-    # print the response
-    print(response.json())
-
-    if response.status_code == 200:
-        event_data = response.json()
-        return len(event_data["collection"]) == 0
-    else:
-        logger.error(f"Failed to check availability: {response.status_code}")
-        raise HTTPException(status_code=500, detail="Failed to check availability")
+# def is_available(iso_datetime: str) -> bool:
+#     start_time = parser.parse(iso_datetime)
+#     start_time = start_time + timedelta(hours=-2)
+#     end_time = start_time + timedelta(minutes=30)
+#     print(start_time, end_time, 'start and endtime')
+#
+#     url = "https://api.calendly.com/scheduled_events"
+#     headers = {"Authorization": f"Bearer {CALD_API_TOKEN}"}
+#
+#     params = {
+#         "min_start_time": start_time,
+#         "max_end_time": end_time
+#     }
+#
+#     response = requests.get(url, headers=headers, params=params)
+#     # print the response
+#     print(response.json())
+#
+#     if response.status_code == 200:
+#         event_data = response.json()
+#         return len(event_data["collection"]) == 0
+#     else:
+#         logger.error(f"Failed to check availability: {response.status_code}")
+#         raise HTTPException(status_code=500, detail="Failed to check availability")
 
 
 # def get_alternatives(date: str, time: str) -> list:
