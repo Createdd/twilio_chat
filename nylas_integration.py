@@ -7,6 +7,7 @@ from datetime import datetime
 
 google_account_id = config("GOOGLE_ACCOUNT_ID")
 CALENDAR_ID = config("GOOGLE_C1_ID")
+CALENDAR_ID2 = config("GOOGLE_C2_ID")
 
 nylas = APIClient(
     client_id=config("NYLAS_CLIENT_ID"),
@@ -15,7 +16,7 @@ nylas = APIClient(
     api_server=config("NYLAS_API_SERVER")
 )
 
-TIME_TO_MEET = '2023-07-19T12:30:00'
+# TIME_TO_MEET = '2023-07-19T12:30:00'
 
 # calendars = nylas.calendars.all()
 # for calendar in calendars:
