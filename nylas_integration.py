@@ -79,17 +79,24 @@ def get_google_calendar_availability(calendar_id, time_to_meet_in_iso):
 
 
 def book_event(title, location, description, participant, time_to_meet_in_iso, calendar_id):
-    start_time_unix, end_time_unix = calculate_time(time_to_meet_in_iso, unix=True)
+    try:
+        start_time_unix, end_time_unix = calculate_time(time_to_meet_in_iso, unix=True)
 
-    event = nylas.events.create()
-    event.title = title
-    event.location = location
-    event.description = description
-    event.participants = [{"name": participant['name'], 'email': participant['email']}]
-    event.when = {"start_time": start_time_unix, "end_time": end_time_unix}
-    event.calendar_id = calendar_id
-    # event.save(notify_participants='true')
-    event.save()
+        event = nylas.events.create()
+        event.title = title
+        event.location = location
+        event.description = description
+        event.participants = [{"name": participant['name'], 'email': participant['email']}]
+        event.when = {"start_time": start_time_unix, "end_time": end_time_unix}
+        event.calendar_id = calendar_id
+        # event.save(notify_participants='true')
+        event.save()
+        return 'Booking done'
+    except Exception as e:
+        print(e)
+        return 'Booking failed'
+
+
 
 
 # available = get_google_calendar_availability(CALENDAR_ID, TIME_TO_MEET)
