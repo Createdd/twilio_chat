@@ -6,7 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 import json
 # Internal imports
-from models import Conversation, SessionLocal
+from models import Conversation, SessionLocal, get_customer_conversations
 from utils import send_message, logger
 import datetime
 
@@ -36,7 +36,7 @@ Jede deiner Antworten darf nur im Schema: "name": "XXX", "time": "YYYY-MM-DDTHH:
 
 app = FastAPI()
 # Set up the OpenAI API client
-openai.api_key = config("OPENAI_API_KEY")
+# openai.api_key = config("OPENAI_API_KEY")
 
 
 # Dependency
@@ -60,6 +60,16 @@ async def reply(request: Request, Body: str = Form(), db: Session = Depends(get_
     whatsapp_number = form_data['From'].split("whatsapp:")[-1]
     print(f"Sending the ChatGPT response to this number: {whatsapp_number}")
 
+    num_entries, message_content = get_customer_conversations(whatsapp_number)
+    print(num_entries)
+
+    if num_entries > 100:# todo set to 10
+        send_message(whatsapp_number, '''
+        Das Thema scheint kompliziert zu sein. Es gibt viele Fragen. 
+Wir leiten dich an einen Mitarbeiter weiter.''')
+        return 'done'
+
+
     # Get or create the user session for the specific route
     # user_session = db.query(UserSession).filter_by(user_id=whatsapp_number, route_name="message").first()
     # if not user_session:
@@ -71,33 +81,34 @@ async def reply(request: Request, Body: str = Form(), db: Session = Depends(get_
     messages.append({"role": "system", "content": NOW_PHRASE})
     messages.append({"role": "system", "content": CONTEXT_FOR_GPT})
 
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=messages,
-        max_tokens=200,
-        n=1,
-        stop=None,
-        temperature=0.5
-    )
-
-    chatgpt_response = response.choices[0].message.content
+    # response = openai.ChatCompletion.create(
+    #     model="gpt-3.5-turbo",
+    #     messages=messages,
+    #     max_tokens=200,
+    #     n=1,
+    #     stop=None,
+    #     temperature=0.5
+    # )
+    #
+    # chatgpt_response = response.choices[0].message.content
+    chatgpt_response='only for testing'
     send_message(whatsapp_number, chatgpt_response)  # fo rlogging
 
     # chatgpt_response = 'this is a test response from file'
 
-    # # Store the conversation in the database
-    # try:
-    #     conversation = Conversation(
-    #         sender=whatsapp_number,
-    #         message=Body,
-    #         response=chatgpt_response
-    #         )
-    #     db.add(conversation)
-    #     db.commit()
-    #     logger.info(f"Conversation #{conversation.id} stored in database")
-    # except SQLAlchemyError as e:
-    #     db.rollback()
-    #     logger.error(f"Error storing conversation in database: {e}")
+    # Store the conversation in the database
+    try:
+        conversation = Conversation(
+            sender=whatsapp_number,
+            message=Body,
+            response=chatgpt_response
+            )
+        db.add(conversation)
+        db.commit()
+        logger.info(f"Conversation #{conversation.id} stored in database")
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Error storing conversation in database: {e}")
 
     name, time, available = None, None, None
 
