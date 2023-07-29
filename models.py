@@ -28,6 +28,7 @@ class Conversation(Base):
     message = Column(String)
     response = Column(String)
     time_of_inquiry = Column(DateTime)
+    extracted_isotime = Column(DateTime)
     extracted_name = Column(String)
     extracted_date = Column(String)
     extracted_time = Column(String)

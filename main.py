@@ -56,9 +56,9 @@ class BookingData:
         self.name = None
         self.time = None
         self.date = None
+        self.isotime = None
         self.available = None
         self.status = None
-        self.isotime = None
 
 
 booking_data = BookingData()
@@ -66,9 +66,8 @@ booking_data = BookingData()
 
 @app.get("/")
 async def index():
-    return {"msg": "working"} \
- \
- \
+    return {"msg": "working"}
+
 @app.get("/message")
 async def index():
     return {"msg": "Send a POST req"}
@@ -77,12 +76,12 @@ async def index():
 def identify_booking_fields(chatgpt_response):
     try:
         booking_request = json.loads(chatgpt_response)
-        isotime = booking_request['isotime']
         # calendar_id = booking_request['calendar_id']
         calendar_id = CALENDAR_ID2
         booking_data.name = booking_request['name']
         booking_data.date = booking_request['date']
         booking_data.time = booking_request['time']
+        booking_data.isotime = booking_request['isotime']
         # print('-----------------------PRINT worked ', available, date, time, name)
     except Exception as e:
         # send_message(whatsapp_number,
@@ -93,7 +92,7 @@ def identify_booking_fields(chatgpt_response):
     return booking_data.status
 
 
-def store_conversation_in_db(whatsapp_number, Body, chatgpt_response, date, time, name, now, status,
+def store_conversation_in_db(whatsapp_number, Body, chatgpt_response, date, time, isotime, name, now, status,
                              db):
     try:
         conversation = Conversation(
@@ -103,6 +102,7 @@ def store_conversation_in_db(whatsapp_number, Body, chatgpt_response, date, time
             extracted_date=date,
             extracted_time=time,
             extracted_name=name,
+            extracted_isotime=isotime,
             time_of_inquiry=now,
             status=status
         )
@@ -118,9 +118,9 @@ def store_conversation_in_db(whatsapp_number, Body, chatgpt_response, date, time
 async def reply(request: Request, Body: str = Form(), db: Session = Depends(get_db)):
     # Extract the phone number from the incoming webhook request
     form_data = await request.form()
-    print('***********', request, form_data)
+    # print('***********', request, form_data)
     whatsapp_number = form_data['From'].split("whatsapp:")[-1]
-    print(f"Sending the ChatGPT response to this number: {whatsapp_number}")
+    # print(f"Sending the ChatGPT response to this number: {whatsapp_number}")
 
     num_entries, message_content = get_customer_conversations(whatsapp_number)
     # print(num_entries)
@@ -178,15 +178,20 @@ Wir leiten dich an einen Mitarbeiter weiter.''')
                                  chatgpt_response,
                                  booking_data.date,
                                  booking_data.time,
+                                 booking_data.isotime,
                                  booking_data.name,
                                  now,
                                  booking_data.status,
                                  db)
 
-        if booking_data.status == 'NO_TIME_OR_DATE':
-            return f'Kannst du mir nochmal sagen, wann du du genau einen Termin möchtest und für welchen Namen ich diesen buchen darf? {e}'
-        else:
-            available = get_google_calendar_availability(calendar_id, booking_data.isotime)
+    print('BOOOOKING DATA ISO TIME', booking_data.isotime)
+    if booking_data.status == 'NO_TIME_OR_DATE':
+        return 'Kannst du mir nochmal sagen, wann du du genau einen Termin möchtest und für welchen Namen ich diesen buchen darf?'
+    else:
+        if booking_data.isotime is not None:
+            booking_data.available = get_google_calendar_availability(calendar_id, booking_data.isotime)
+            print("??????????",booking_data.available, 'booking_data.available')
+
 
     if booking_data.available is None:
         # send_message(whatsapp_number, 'Wir leiten dich an einen Mitarbeiter weiter.')
