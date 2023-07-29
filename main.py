@@ -6,7 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 import json
 # Internal imports
-from models import Conversation, SessionLocal, get_customer_conversations
+from models import Conversation, SessionLocal, get_customer_conversations, check_last_entry, is_number_in_database, update_status
 from utils import send_message, logger
 import datetime
 
@@ -22,22 +22,23 @@ NOW_PHRASE = f"Der zeitpunkt der anfrage ist {now}."
 CONTEXT_FOR_GPT = """
 Du bist ein Servicebot für Buchungsanfragen. 
 Extrahiere das Datum, die Uhrzeit und den Namen aus der Anfrage und gib die Informationen im folgenden JSON-Format aus: 
-{"name": "Daniel", "time": "YYYY-MM-DDTHH:MM:SS"}. 
+{"name": "NAME", "time": "HH:MM:SS”, "date":"YYYY-MM-DD", isotime:"YYYY-MM-DDTHH:MM:SS"}. 
 Von dem Zeitpunkt der Anfrage sollen die Zeiten berechnet werden. wie zum beispiel "Übermorgen", "Morgen", etc.
 Überprüfe ob in der Anfrage sowohl ein Datum als auch eine Uhrzeit vorhanden ist. Wenn nicht dann frage jeweils nach dem fehlenden Teil. 
 Nimm nicht irgendwelche Werte an.
 Wenn der Kunde nach "Morgen" fragt, evaluiere das Datum ausgehend von heute. 
 Falls kein Name angegeben ist, verwende "Kunde" als Standardname. 
-Sollte kein Datum in der Buchungsanfrage vorhanden sein, verwende “fehlt”. 
+Sollte kein Datum in der Buchungsanfrage vorhanden sein, verwende “fehlt”. Datum ist hier als "date zu verstehen" und damit ist nur der kalender tag gemeint. 
 Sollte keine Uhrzeit in der Buchungsanfrage vorhanden sein, verwende “fehlt”. 
 Achte darauf, dass die Ausgabe ausschließlich dieses JSON-Format enthält und verzichte auf jegliche Hinweise und Floskeln. 
-Jede deiner Antworten darf nur im Schema: "name": "XXX", "time": "YYYY-MM-DDTHH:MM:SS” sein.
+Jede deiner Antworten darf nur im Schema: "name": "XXX", "time": "HH:MM:SS”, "date":"YYYY-MM-DD, isotime:"YYYY-MM-DDTHH:MM:SS" sein.
 """
 
 app = FastAPI()
 # Set up the OpenAI API client
-# openai.api_key = config("OPENAI_API_KEY")
+openai.api_key = config("OPENAI_API_KEY")
 
+calendar_id = CALENDAR_ID2
 
 # Dependency
 def get_db():
@@ -48,20 +49,76 @@ def get_db():
         db.close()
 
 
+class BookingData:
+    def __init__(self):
+        self.name = None
+        self.time = None
+        self.date = None
+        self.available = None
+        self.status = None
+        self.isotime = None
+
+booking_data = BookingData()
+
+
 @app.get("/")
 async def index():
-    return {"msg": "working"}
+    return {"msg": "working"}\
 
+@app.get("/message")
+async def index():
+    return {"msg": "Send a POST req"}
+
+def identify_booking_fields(chatgpt_response):
+    try:
+        booking_request = json.loads(chatgpt_response)
+        isotime = booking_request['isotime']
+        # calendar_id = booking_request['calendar_id']
+        calendar_id = CALENDAR_ID2
+        booking_data.name = booking_request['name']
+        booking_data.date = booking_request['date']
+        booking_data.time = booking_request['time']
+        # print('-----------------------PRINT worked ', available, date, time, name)
+    except Exception as e:
+        # send_message(whatsapp_number,
+        #              f'Kannst du mir nochmal sagen, wann du du genau einen Termin möchtest und für welchen Namen ich diesen buchen darf? {e}')
+        booking_data.status = 'NO_TIME_OR_DATE'
+        print('NO_TIME_OR_DATE', e)
+
+    return booking_data.status
+
+def store_conversation_in_db(whatsapp_number, Body, chatgpt_response, date, time, name, now, status, db: Session = Depends(get_db)):
+    try:
+        conversation = Conversation(
+            sender=whatsapp_number,
+            message=Body,
+            response=chatgpt_response,
+            extracted_date=date,
+            extracted_time=time,
+            extracted_name=name,
+            time_of_inquiry=now,
+            status=status
+        )
+        db.add(conversation)
+        db.commit()
+        logger.info(f"Conversation #{conversation.id} stored in database")
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Error storing conversation in database: {e}")
 
 @app.post("/message")
 async def reply(request: Request, Body: str = Form(), db: Session = Depends(get_db)):
     # Extract the phone number from the incoming webhook request
     form_data = await request.form()
+    print('***********', request, form_data)
     whatsapp_number = form_data['From'].split("whatsapp:")[-1]
     print(f"Sending the ChatGPT response to this number: {whatsapp_number}")
 
+
+
+
     num_entries, message_content = get_customer_conversations(whatsapp_number)
-    print(num_entries)
+    # print(num_entries)
 
     if num_entries > 100:# todo set to 10
         send_message(whatsapp_number, '''
@@ -91,66 +148,73 @@ Wir leiten dich an einen Mitarbeiter weiter.''')
     # )
     #
     # chatgpt_response = response.choices[0].message.content
-    chatgpt_response='only for testing'
-    send_message(whatsapp_number, chatgpt_response)  # fo rlogging
+    chatgpt_response='''{  "name": "ZZZZZ",
+  "time": "23:00:00",
+  "date": "2023-07-27",
+  "isotime": "2023-07-27T23:00:00"
+}'''
+    # send_message(whatsapp_number, chatgpt_response)  # for logging
 
-    # chatgpt_response = 'this is a test response from file'
+    if is_number_in_database(whatsapp_number):
+        print('number is in database')
+        missing_info = check_last_entry(whatsapp_number)
+        print(f'=========PPPPRINT {missing_info}')
+        if missing_info['missing_name']:
+            # send_message(whatsapp_number, 'Wie ist dein Name?')
+            return 'Wie ist dein Name?'
+        if missing_info['missing_date']:
+            # send_message(whatsapp_number, 'An welchem Datum möchtest du einen Termin?')
+            return 'An welchem Datum möchtest du einen Termin?'
+        if missing_info['missing_time']:
+            # send_message(whatsapp_number, 'Um welche Uhrzeit möchtest du einen Termin?')
+            return 'Um welche Uhrzeit möchtest du einen Termin?'
+    else:
+        identify_booking_fields(chatgpt_response)
+        store_conversation_in_db(whatsapp_number, Body,
+                                 chatgpt_response,
+                                 booking_data.date,
+                                 booking_data.time,
+                                 booking_data.name,
+                                 now,
+                                 booking_data.status)
 
-    # Store the conversation in the database
-    try:
-        conversation = Conversation(
-            sender=whatsapp_number,
-            message=Body,
-            response=chatgpt_response
-            )
-        db.add(conversation)
-        db.commit()
-        logger.info(f"Conversation #{conversation.id} stored in database")
-    except SQLAlchemyError as e:
-        db.rollback()
-        logger.error(f"Error storing conversation in database: {e}")
+        if booking_data.status == 'NO_TIME_OR_DATE':
+            return f'Kannst du mir nochmal sagen, wann du du genau einen Termin möchtest und für welchen Namen ich diesen buchen darf? {e}'
+        else:
+            available = get_google_calendar_availability(calendar_id, isotime)
 
-    name, time, available = None, None, None
+    if booking_data.available is None:
+        # send_message(whatsapp_number, 'Wir leiten dich an einen Mitarbeiter weiter.')
+        booking_data.status = 'NO_INFO_ON_AVAILABILITY'
+        update_status(whatsapp_number, booking_data.status)
 
-    try:
-        booking_request = json.loads(chatgpt_response)
-        time = booking_request['time']
-        # calendar_id = booking_request['calendar_id']
-        calendar_id = CALENDAR_ID2
-        name = booking_request['name']
 
-        available = get_google_calendar_availability(calendar_id, time)
-        print('worked', available, time, name)
+        return booking_data.status
 
-    except Exception as e:
-        send_message(whatsapp_number,
-                     f'Kannst du mir nochmal sagen, wann du du genau einen Termin möchtest und für welchen Namen ich diesen buchen darf?')
-        return 'no time or date'
-
-    if available is None:
-        send_message(whatsapp_number, 'Wir leiten dich an einen Mitarbeiter weiter.')
-        return 'done'
-
-    if available:
+    if booking_data.available:
+        booking_data.status = 'AVAILABLE'
+        update_status(whatsapp_number, booking_data.status)
         booking_answer = book_event(
-            title=f"Booking with {name}",
+            title=f"Booking with {booking_data.name}",
             location="at office",
             description="meeting with doctor",
-            participant={'name': name, 'email': "creativeassemblers@gmail.com"},
-            time_to_meet_in_iso=time,
+            participant={'name': booking_data.name, 'email': "creativeassemblers@gmail.com"},
+            time_to_meet_in_iso=booking_data.isotime,
             calendar_id=CALENDAR_ID2
         )
-        print(booking_answer, 'booking_answer')
-        send_message(whatsapp_number, booking_answer)
-
+        # print(booking_answer, 'booking_answer')
+        # send_message(whatsapp_number, booking_answer)
+        booking_data.status = 'BOOKED'
+        update_status(whatsapp_number, booking_data.status)
+        response = f'Der Termin wurde gebucht. Zeit: {booking_data.time}, Datum: {booking_data.date}, Name: {booking_data.name}'
+        return response
     else:
-        send_message(whatsapp_number, 'Der Termin ist nicht mehr frei. Nenne einen anderen')
+        status = 'NOT_AVAILABLE'
+        update_status(whatsapp_number, status)
+        response= f'Der Termin ist nicht mehr frei. Nenne einen anderen'
+        # send_message(whatsapp_number, 'Der Termin ist nicht mehr frei. Nenne einen anderen')
 
-    # print(booking_request)
-    # print(time, calendar_id, name)
-
-    print('done')
-    return "done"
+        return response
 
 # -----------------------------
 
@@ -191,3 +255,28 @@ Wir leiten dich an einen Mitarbeiter weiter.''')
 #
 #     print('done')
 #     return "done"
+
+
+    # try:
+    #     booking_request = json.loads(chatgpt_response)
+    #     isotime = booking_request['isotime']
+    #     # calendar_id = booking_request['calendar_id']
+    #     calendar_id = CALENDAR_ID2
+    #     name = booking_request['name']
+    #
+    #     # available = get_google_calendar_availability(calendar_id, isotime)
+    #
+    #     date = booking_request['date']
+    #     time = booking_request['time']
+    #     print('-----------------------PRINT worked ', available, date, time, name)
+    #
+    # except Exception as e:
+    #     send_message(whatsapp_number,
+    #                  f'Kannst du mir nochmal sagen, wann du du genau einen Termin möchtest und für welchen Namen ich diesen buchen darf? {e}')
+    #     status = 'NO_TIME_OR_DATE'
+
+
+
+
+
+        # return status
