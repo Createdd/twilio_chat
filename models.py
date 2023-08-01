@@ -129,3 +129,45 @@ def update_status(whatsapp_number, new_status):
 
     finally:
         db.close()
+
+
+from sqlalchemy import or_
+
+
+def update_booking_data(whatsapp_number, new_extracted_time, new_extracted_name, new_extracted_date):
+    # Function to update extracted_time, extracted_name, and extracted_date in the database
+    db = SessionLocal()
+    try:
+        # Query the database for the existing conversation based on the WhatsApp number
+        conversation = db.query(Conversation).filter_by(sender=whatsapp_number).first()
+
+        # If conversation exists, update the extracted_time, extracted_name, and extracted_date
+        if conversation:
+            # print(f"Got conv from db: {conversation.__dict__}")
+            # Check if new extracted_time is available and update if so
+            if conversation.extracted_time is None and new_extracted_time is not None:
+                conversation.extracted_time = new_extracted_time
+                print('updated time from {conversation.extracted_time} to {new_extracted_time}')
+
+            # Check if new extracted_name is available and update if so
+            if conversation.extracted_name is None and new_extracted_name is not None:
+                conversation.extracted_name = new_extracted_name
+                print(f'updated name from {conversation.extracted_name} to {new_extracted_name}')
+
+            # Check if new extracted_date is available and update if so
+            if conversation.extracted_date is None and new_extracted_date is not None:
+                conversation.extracted_date = new_extracted_date
+                print('updated date from {conversation.extracted_date} to {new_extracted_date}')
+
+            db.commit()
+            logger.info(f"Updated Booking Data for Conversation #{conversation.id}")
+        else:
+            # Handle the case where the conversation does not exist (WhatsApp number not found)
+            logger.error(f"Conversation with WhatsApp number {whatsapp_number} not found")
+
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Error updating Booking Data in the database: {e}")
+
+    finally:
+        db.close()
