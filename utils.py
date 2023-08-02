@@ -4,7 +4,7 @@ import logging
 # Third-party imports
 from twilio.rest import Client
 from decouple import config
-
+from dateutil import parser
 
 # Find your Account SID and Auth Token at twilio.com/console
 # and set the environment variables. See http://twil.io/secure
@@ -28,3 +28,13 @@ def send_message(to_number, body_text):
         logger.info(f"Message sent to {to_number}: {message.body}")
     except Exception as e:
         logger.error(f"Error sending message to {to_number} from {twilio_number}: Text was {body_text} Error was: {e}")
+
+def convert_isotime_to_readable(iso_time):
+    # Parse the ISO timestamp string to a datetime object
+    time_dt = parser.parse(iso_time)
+
+    # Extract date and time components
+    date_str = time_dt.strftime('%Y-%m-%d')
+    time_str = time_dt.strftime('%H:%M:%S')
+
+    return date_str, time_str

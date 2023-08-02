@@ -8,10 +8,10 @@ import json
 # Internal imports
 from models import Conversation, SessionLocal, get_customer_conversations, check_last_entry, is_number_in_database, \
     update_status, update_booking_data
-from utils import send_message, logger
+from utils import send_message, logger, convert_isotime_to_readable
 import datetime
 
-from nylas_integration import check_time_and_book, get_google_calendar_availability, book_event
+from nylas_integration import check_time_and_book, get_google_calendar_availability, book_event, get_next_available_slots
 
 TEST=True
 CALENDAR_ID2 = config("GOOGLE_C2_ID")
@@ -274,7 +274,14 @@ Wir leiten dich an einen Mitarbeiter weiter.''')
         status = 'NOT_AVAILABLE'
         update_status(whatsapp_number, status)
 
-        response = f'Der Termin ist nicht mehr frei. Nenne einen anderen'
+        date_suggestions = get_next_available_slots("creativeassemblers@gmail.com", booking_data.isotime)
+
+        response = f'Der Termin ist nicht mehr frei. würde einer dieser passen?'
+
+        for isodate in date_suggestions:
+            suggested_date, suggested_time = convert_isotime_to_readable(isodate)
+            response += f' \n Datum: {suggested_date}, Zeit: {suggested_time}'
+        response += 'Falls nicht, dann bitte geben Sie uns einen neuen Wunschtermin mit Datum und Uhrzeit an.'
         send_message(whatsapp_number, response)
 
         return response
