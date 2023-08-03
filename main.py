@@ -280,7 +280,14 @@ Wir leiten dich an einen Mitarbeiter weiter.''')
                 send_message(whatsapp_number, 'Um welche Uhrzeit möchtest du einen Termin?')
             return 'Um welche Uhrzeit möchtest du einen Termin?'
     else:
-        identify_booking_fields(chatgpt_response)
+        extracted_fields = identify_booking_fields(chatgpt_response)
+        fields_to_update = identify_fields_to_update(whatsapp_number)
+        print('FIELDS TO UPDATE', fields_to_update)
+        new_fields = {}
+        for field in fields_to_update:
+            new_fields[field] = extracted_fields[field]
+        update_customer_data(new_fields)
+
         store_conversation_in_db(whatsapp_number, Body,
                                  chatgpt_response,
                                  booking_data.date,

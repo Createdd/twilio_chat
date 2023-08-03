@@ -167,18 +167,18 @@ def update_booking_data_in_db(whatsapp_number, new_extracted_time, new_extracted
         if conversation:
             # print(f"Got conv from db: {conversation.__dict__}")
             # Check if new extracted_time is available and update if so
-            if conversation.extracted_time is None and new_extracted_time is not None:
-                conversation.extracted_time = new_extracted_time
+            if conversation.time is None and new_extracted_time is not None:
+                conversation.time = new_extracted_time
                 print('updated time from {conversation.extracted_time} to {new_extracted_time}')
 
             # Check if new extracted_name is available and update if so
-            if conversation.extracted_name is None and new_extracted_name is not None:
-                conversation.extracted_name = new_extracted_name
-                print(f'updated name from {conversation.extracted_name} to {new_extracted_name}')
+            if conversation.name is None and new_extracted_name is not None:
+                conversation.name = new_extracted_name
+                print(f'updated name from {conversation.name} to {new_extracted_name}')
 
             # Check if new extracted_date is available and update if so
-            if conversation.extracted_date is None and new_extracted_date is not None:
-                conversation.extracted_date = new_extracted_date
+            if conversation.date is None and new_extracted_date is not None:
+                conversation.date = new_extracted_date
                 print('updated date from {conversation.extracted_date} to {new_extracted_date}')
 
             db.commit()
