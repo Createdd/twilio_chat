@@ -7,34 +7,48 @@ from sqlalchemy.orm import Session
 import json
 # Internal imports
 from models import Conversation, SessionLocal, get_customer_conversations, check_last_entry, is_number_in_database, \
-    update_status, update_booking_data
+    update_status, update_booking_data_in_db, get_booking_data
 from utils import send_message, logger, convert_isotime_to_readable
 import datetime
 
 from nylas_integration import check_time_and_book, get_google_calendar_availability, book_event, get_next_available_slots
 
+#-----------------Test-----------------
 TEST=True
+# -----------------Test-----------------
+
+
 CALENDAR_ID2 = config("GOOGLE_C2_ID")
 
 now = datetime.datetime.now()
 now = now.isoformat()
 
-NOW_PHRASE = f"Der zeitpunkt der anfrage ist {now}."
+NOW_PHRASE = f"The point of questioning is {now}."
 
 CONTEXT_FOR_GPT = """
-Du bist ein Servicebot für Buchungsanfragen. 
-Extrahiere das Datum, die Uhrzeit und den Namen aus der Anfrage und gib die Informationen im folgenden JSON-Format aus: 
-{"name": "NAME", "time": "HH:MM:SS”, "date":"YYYY-MM-DD", isotime:"YYYY-MM-DDTHH:MM:SS"}. 
+Du bist ein Servicebot für Buchungsanfragen.
+Extrahiere das Datum, die Uhrzeit und den Namen aus der Anfrage und gib die Informationen im folgenden JSON-Format aus:
+{"name": "NAME", "time": "HH:MM:SS”, "date":"YYYY-MM-DD", isotime:"YYYY-MM-DDTHH:MM:SS"}.
 Von dem Zeitpunkt der Anfrage sollen die Zeiten berechnet werden. wie zum beispiel "Übermorgen", "Morgen", etc.
-Überprüfe ob in der Anfrage sowohl ein Datum als auch eine Uhrzeit vorhanden ist. Wenn nicht dann frage jeweils nach dem fehlenden Teil. 
+Überprüfe ob in der Anfrage sowohl ein Datum als auch eine Uhrzeit vorhanden ist. Wenn nicht dann frage jeweils nach dem fehlenden Teil.
 Nimm nicht irgendwelche Werte an.
-Wenn der Kunde nach "Morgen" fragt, evaluiere das Datum ausgehend von heute. 
+Wenn der Kunde nach "Morgen" fragt, evaluiere das Datum ausgehend von heute.
 Sollte kein Name in der Buchungsanfrage vorhanden sein, verwende None.
-Sollte kein Datum in der Buchungsanfrage vorhanden sein, verwende None. Datum ist hier als "date zu verstehen" und damit ist nur der kalender tag gemeint. 
-Sollte keine Uhrzeit in der Buchungsanfrage vorhanden sein, verwende None. 
-Achte darauf, dass die Ausgabe ausschließlich dieses JSON-Format enthält und verzichte auf jegliche Hinweise und Floskeln. 
+Sollte kein Datum in der Buchungsanfrage vorhanden sein, verwende None. Datum ist hier als "date zu verstehen" und damit ist nur der kalender tag gemeint.
+Sollte keine Uhrzeit in der Buchungsanfrage vorhanden sein, verwende None.
+Achte darauf, dass die Ausgabe ausschließlich dieses JSON-Format enthält und verzichte auf jegliche Hinweise und Floskeln.
 Jede deiner Antworten darf nur im Schema: "name": "XXX", "time": "HH:MM:SS”, "date":"YYYY-MM-DD, isotime:"YYYY-MM-DDTHH:MM:SS" sein.
 """
+# CONTEXT_FOR_GPT = """
+# This is the context. Do not repeat this or summarize it to the user.
+# You are a service bot that handles booking requests. You guide the customer to the point where he or she provides 3 pieces of information.
+# 1 Name, 2 Date, 3 Time.
+# Make sure that the customers gives these 3 pieces of information and if the conversion tends to go somewhere else bring it back to the booking.
+# If you have all the booking information, prompt the customer: "Lassen Sie mich überprüfen ob der Termin verfügbar ist. Datum: {date} Zeit: {time}."
+# This prompt is always necessary, because I use it to query my database. Make sure that the format of date is YYYY-MM-DD and the format of time is HH:MM:SS.
+# If the the schedule is available, ask the customer to confirm the booking, with the prompt 'Datum und Uhrzeit sind verfügbar. Wollen Sie den Termin buchen?'.
+# If the customer confirms the booking, send the prompt "Ich habe den Termin gebucht. Vielen Dank für Ihre Buchung."
+# """
 
 app = FastAPI()
 # Set up the OpenAI API client
@@ -88,7 +102,8 @@ async def index():
 #         booking_data.isotime = booking_request['isotime']
 #         # print('-----------------------PRINT worked ', available, date, time, name)
 #     except Exception as e:
-#         # send_message(whatsapp_number,
+#         # if not TEST:
+#           send_message(whatsapp_number,
 #         #              f'Kannst du mir nochmal sagen, wann du du genau einen Termin möchtest und für welchen Namen ich diesen buchen darf? {e}')
 #         booking_data.status = 'NO_TIME_OR_DATE'
 #         print('NO_TIME_OR_DATE', e)
@@ -112,28 +127,53 @@ def identify_booking_fields(chatgpt_response):
     except Exception as e:
         print('Cannot JSON load response', e)
 
-
-    # calendar_id = booking_request['calendar_id']
-    # calendar_id = CALENDAR_ID2
-
-    # Initialize the status to 'COMPLETE' by default
-    # booking_data.status = 'COMPLETE'
-
-    # print('BOOKINGREQUEST', booking_request)
     for field in required_fields:
+        if booking_request[field] is None:
+            continue
+        required_fields[field] = booking_request[field]
+
+    extracted_fields = required_fields
+    print('extracted_fields', extracted_fields)
+    return extracted_fields
+def identify_fields_to_update(whatsapp_number):
+    existing_fields = get_booking_data(whatsapp_number)
+
+    fields_to_update = []
+    for field in existing_fields:
+        # print('field', field, existing_fields[field] )
+        if existing_fields[field] is None:
+            fields_to_update.append(field)
+
+    #todo: add logic to update outdated fields
+    print('identify_fields_to_update', fields_to_update)
+    return fields_to_update
+
+
+
+
+def update_customer_data(fields_to_update):
+    # print('BOOKINGREQUEST', booking_request)
+    for field in fields_to_update:
         try:
             # print('fields', field, booking_request[field])
-            setattr(booking_data, field, booking_request[field])
-            if booking_request[field] is None:
-                # print('triggered')
-                booking_data.status = required_fields[field]
+            setattr(booking_data, field, fields_to_update[field])
+            # if booking_data[field] is None:
+            #     # print('triggered')
+            #     booking_data.status = required_fields[field]
+            #     booking_data[field] = extracted_fields[field]
 
         except Exception as e:
             # Handle any exceptions, logging, or error responses as needed
-            booking_data.status = required_fields[field]
-            print('Error', required_fields[field], e)
+            # booking_data.status = required_fields[field]
+            print('Error', fields_to_update[field], e)
 
-    print('UPDATE BOOKING DATA: ', booking_data)
+
+    # for field in booking_data.__dict__:
+    #     if field is None:
+    #         booking_data.status = required_fields[field]
+    booking_data.status = 'UPDATED_DATA'
+    print('FIELDS TO UPDATE', fields_to_update)
+    print('UPDATED BOOKING DATA: ', booking_data)
     return booking_data.status
 
 
@@ -171,7 +211,8 @@ async def reply(request: Request, Body: str = Form(), db: Session = Depends(get_
     # print(num_entries)
 
     if num_entries > 100:  # todo set to 10
-        send_message(whatsapp_number, '''
+        if not TEST:
+            send_message(whatsapp_number, '''
         Das Thema scheint kompliziert zu sein. Es gibt viele Fragen. 
 Wir leiten dich an einen Mitarbeiter weiter.''')
         return 'done'
@@ -207,23 +248,36 @@ Wir leiten dich an einen Mitarbeiter weiter.''')
 # }'''
 
     # chatgpt_response = Body
-    # send_message(whatsapp_number, chatgpt_response)  # for logging
+    # if not TEST:
+    #   send_message(whatsapp_number, chatgpt_response)  # for logging
 
     if is_number_in_database(whatsapp_number):
         print('number is in database')
-        identify_booking_fields(chatgpt_response)
-        update_booking_data(whatsapp_number, booking_data.time, booking_data.name, booking_data.date)
+        extracted_fields = identify_booking_fields(chatgpt_response)
+        fields_to_update = identify_fields_to_update(whatsapp_number)
+        print('FIELDS TO UPDATE', fields_to_update)
+        new_fields = {}
+        for field in fields_to_update:
+            new_fields[field] = extracted_fields[field]
+        update_customer_data(new_fields)
+
+        # print('extracted_fields', extracted_fields)
+        # todo only idetify above and do not change status
+        update_booking_data_in_db(whatsapp_number, booking_data.time, booking_data.name, booking_data.date)
 
         missing_info = check_last_entry(whatsapp_number)
         print(f'=========PPPPRINT {missing_info}')
         if missing_info['missing_name']:
-            # send_message(whatsapp_number, 'Wie ist dein Name?')
+            if not TEST:
+                send_message(whatsapp_number, 'Wie ist dein Name?')
             return 'Wie ist dein Name?'
         if missing_info['missing_date']:
-            # send_message(whatsapp_number, 'An welchem Datum möchtest du einen Termin?')
+            if not TEST:
+                send_message(whatsapp_number, 'An welchem Datum möchtest du einen Termin?')
             return 'An welchem Datum möchtest du einen Termin?'
         if missing_info['missing_time']:
-            # send_message(whatsapp_number, 'Um welche Uhrzeit möchtest du einen Termin?')
+            if not TEST:
+                send_message(whatsapp_number, 'Um welche Uhrzeit möchtest du einen Termin?')
             return 'Um welche Uhrzeit möchtest du einen Termin?'
     else:
         identify_booking_fields(chatgpt_response)
@@ -237,7 +291,27 @@ Wir leiten dich an einen Mitarbeiter weiter.''')
                                  booking_data.status,
                                  db)
 
-    # print('BOOOOKING DATA ISO TIME', booking_data.isotime)
+    print('ok1')
+    print('booking status', booking_data.status)
+    if booking_data.status == 'AVAILABLE':
+        print('AVAILABLE: ',chatgpt_response.lower())
+        if 'ja' in chatgpt_response.lower():
+            booking_data.status = 'READY_TO_BOOK'
+            update_status(whatsapp_number, booking_data.status)
+
+        elif 'nein' in chatgpt_response.lower():
+            booking_data.status = 'NO_INFO_ON_BOOKING'
+            update_status(whatsapp_number, booking_data.status)
+
+            return 'Ok, wir suchen einen anderen Termin.'
+        else:
+            booking_data.status = 'NO_INFO_ON_BOOKING'
+            update_status(whatsapp_number, booking_data.status)
+
+            return 'Ich habe Sie nicht verstanden. Welchen Termin wollen Sie buchen?'
+
+    print('ok2')
+
     if booking_data.status == 'NO_TIME_OR_DATE':
         return 'Kannst du mir nochmal sagen, wann du du genau einen Termin möchtest und für welchen Namen ich diesen buchen darf?'
     else:
@@ -247,7 +321,8 @@ Wir leiten dich an einen Mitarbeiter weiter.''')
 
 
     if booking_data.available is None:
-        # send_message(whatsapp_number, 'Wir leiten dich an einen Mitarbeiter weiter.')
+        # if not TEST:
+        #   send_message(whatsapp_number, 'Wir leiten dich an einen Mitarbeiter weiter.')
         booking_data.status = 'NO_INFO_ON_AVAILABILITY'
         update_status(whatsapp_number, booking_data.status)
 
@@ -256,6 +331,30 @@ Wir leiten dich an einen Mitarbeiter weiter.''')
     if booking_data.available:
         booking_data.status = 'AVAILABLE'
         update_status(whatsapp_number, booking_data.status)
+
+        # print(booking_answer, 'booking_answer')
+        if not TEST:
+            send_message(whatsapp_number, 'Datum und Uhrzeit sind verfügbar. Wollen Sie den Termin buchen?')
+    else:
+        booking_data.status = 'NOT_AVAILABLE'
+        update_status(whatsapp_number, booking_data.status)
+
+        date_suggestions = get_next_available_slots("creativeassemblers@gmail.com", booking_data.isotime)
+        response = f'Der Termin ist nicht mehr frei. würde einer dieser passen?'
+
+        for isodate in date_suggestions:
+            suggested_date, suggested_time = convert_isotime_to_readable(isodate)
+            response += f' \nDatum: {suggested_date}, Zeit: {suggested_time}'
+
+        response += '\nFalls nicht, dann bitte geben Sie uns einen neuen Wunschtermin mit Datum und Uhrzeit an.'
+        if not TEST:
+            send_message(whatsapp_number, response)
+
+        return response
+
+
+
+    if booking_data.status == 'READY_TO_BOOK':
         booking_answer = book_event(
             title=f"Booking with {booking_data.name}",
             location="at office",
@@ -264,27 +363,14 @@ Wir leiten dich an einen Mitarbeiter weiter.''')
             time_to_meet_in_iso=booking_data.isotime,
             calendar_id=CALENDAR_ID2
         )
-        # print(booking_answer, 'booking_answer')
         booking_data.status = 'BOOKED'
         update_status(whatsapp_number, booking_data.status)
         response = f'Der Termin wurde gebucht. Zeit: {booking_data.time}, Datum: {booking_data.date}, Name: {booking_data.name}'
-        send_message(whatsapp_number, response)
+        if not TEST:
+            send_message(whatsapp_number, response)
         return response
-    else:
-        status = 'NOT_AVAILABLE'
-        update_status(whatsapp_number, status)
 
-        date_suggestions = get_next_available_slots("creativeassemblers@gmail.com", booking_data.isotime)
 
-        response = f'Der Termin ist nicht mehr frei. würde einer dieser passen?'
-
-        for isodate in date_suggestions:
-            suggested_date, suggested_time = convert_isotime_to_readable(isodate)
-            response += f' \n Datum: {suggested_date}, Zeit: {suggested_time}'
-        response += 'Falls nicht, dann bitte geben Sie uns einen neuen Wunschtermin mit Datum und Uhrzeit an.'
-        send_message(whatsapp_number, response)
-
-        return response
 
 # -----------------------------
 
@@ -305,7 +391,8 @@ Wir leiten dich an einen Mitarbeiter weiter.''')
 #     messages = [{"role": "user", "content": Body}]
 #     booking_request = messages[0]['content']
 #
-#     # send_message(whatsapp_number, booking_request)
+#     # if not TEST:
+#       send_message(whatsapp_number, booking_request)
 #
 #     try:
 #         booking_request = json.loads(booking_request)
@@ -313,13 +400,15 @@ Wir leiten dich an einen Mitarbeiter weiter.''')
 #         calendar_id = booking_request['calendar_id']
 #         name = booking_request['name']
 #     except Exception as e:
-#         send_message(whatsapp_number, f'Could not extract booking info. {e}')
+#         if not TEST:
+#           send_message(whatsapp_number, f'Could not extract booking info. {e}')
 #
 #     # print(booking_request)
 #     print(time, calendar_id, name)
 #     booking_answer = check_time_and_book(calendar_id, time, name)
 #     print(booking_answer, 'booking_answer')
-#     send_message(whatsapp_number, booking_answer)
+#     if not TEST:
+#       send_message(whatsapp_number, booking_answer)
 #
 #
 #
@@ -341,7 +430,8 @@ Wir leiten dich an einen Mitarbeiter weiter.''')
 #     print('-----------------------PRINT worked ', available, date, time, name)
 #
 # except Exception as e:
-#     send_message(whatsapp_number,
+#     if not TEST:
+#       send_message(whatsapp_number,
 #                  f'Kannst du mir nochmal sagen, wann du du genau einen Termin möchtest und für welchen Namen ich diesen buchen darf? {e}')
 #     status = 'NO_TIME_OR_DATE'
 

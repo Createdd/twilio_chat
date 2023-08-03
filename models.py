@@ -131,10 +131,32 @@ def update_status(whatsapp_number, new_status):
         db.close()
 
 
-from sqlalchemy import or_
+def get_booking_data(whatsapp_number):
+    db = SessionLocal()
+    try:
+        # Query the database for the existing conversation based on the WhatsApp number
+        conversation = db.query(Conversation).filter_by(sender=whatsapp_number).first()
 
+        # Create an empty dictionary to store the field values
+        booking_data = {}
 
-def update_booking_data(whatsapp_number, new_extracted_time, new_extracted_name, new_extracted_date):
+        # Iterate through the fields of the conversation and add them to the dictionary
+        for field in conversation.__dict__:
+            # Skip internal attributes and only add user-defined fields to the dictionary
+            if not field.startswith("_"):
+                booking_data[field] = conversation.__dict__[field]
+
+        print('Booking data from get_booking_data:', booking_data)
+        return booking_data
+
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Error in getting the data from the database: {e}")
+
+    finally:
+        db.close()
+
+def update_booking_data_in_db(whatsapp_number, new_extracted_time, new_extracted_name, new_extracted_date):
     # Function to update extracted_time, extracted_name, and extracted_date in the database
     db = SessionLocal()
     try:
