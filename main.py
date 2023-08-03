@@ -6,7 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 import json
 # Internal imports
-from models import Conversation, SessionLocal, get_customer_conversations, check_last_entry, is_number_in_database, \
+from db_functions import Conversation, SessionLocal, get_customer_conversations, check_last_entry, is_number_in_database, \
     update_status, update_booking_data_in_db, get_booking_data
 from utils import send_message, logger, convert_isotime_to_readable
 import datetime
