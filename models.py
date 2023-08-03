@@ -28,10 +28,10 @@ class Conversation(Base):
     message = Column(String)
     response = Column(String)
     time_of_inquiry = Column(DateTime)
-    extracted_isotime = Column(DateTime)
-    extracted_name = Column(String)
-    extracted_date = Column(String)
-    extracted_time = Column(String)
+    isotime = Column(DateTime)
+    name = Column(String)
+    date = Column(String)
+    time = Column(String)
     status = Column(String)
 
 
@@ -93,9 +93,9 @@ def check_last_entry(whatsapp_number):
 
         # Check for missing name, date, and time
         missing_info = {
-            "missing_name": not last_entry.extracted_name if last_entry else False,
-            "missing_date": not last_entry.extracted_date if last_entry else False,
-            "missing_time": not last_entry.extracted_time if last_entry else False,
+            "missing_name": not last_entry.name if last_entry else False,
+            "missing_date": not last_entry.date if last_entry else False,
+            "missing_time": not last_entry.time if last_entry else False,
         }
 
         return missing_info

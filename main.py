@@ -184,10 +184,10 @@ def store_conversation_in_db(whatsapp_number, Body, chatgpt_response, date, time
             sender=whatsapp_number,
             message=Body,
             response=chatgpt_response,
-            extracted_date=date,
-            extracted_time=time,
-            extracted_name=name,
-            extracted_isotime=isotime,
+            date=date,
+            time=time,
+            name=name,
+            isotime=isotime,
             time_of_inquiry=now,
             status=status
         )
