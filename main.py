@@ -1,13 +1,14 @@
 # Third-party imports
+import uvicorn
 import openai
 from fastapi import FastAPI, Form, Depends, Request
 from decouple import config
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 import json
-# Internal imports
-from db_functions import Conversation, SessionLocal, get_customer_conversations, check_last_entry, is_number_in_database, \
-    update_status, update_booking_data_in_db, get_booking_data
+
+from templates import *
+from db_functions import *
 from utils import send_message, logger, convert_isotime_to_readable
 import datetime
 
@@ -177,26 +178,7 @@ def update_customer_data(fields_to_update):
     return booking_data.status
 
 
-def store_conversation_in_db(whatsapp_number, Body, chatgpt_response, date, time, isotime, name, now, status,
-                             db):
-    try:
-        conversation = Conversation(
-            sender=whatsapp_number,
-            message=Body,
-            response=chatgpt_response,
-            date=date,
-            time=time,
-            name=name,
-            isotime=isotime,
-            time_of_inquiry=now,
-            status=status
-        )
-        db.add(conversation)
-        db.commit()
-        logger.info(f"Conversation #{conversation.id} stored in database")
-    except SQLAlchemyError as e:
-        db.rollback()
-        logger.error(f"Error storing conversation in database: {e}")
+
 
 
 @app.post("/message")
@@ -212,9 +194,7 @@ async def reply(request: Request, Body: str = Form(), db: Session = Depends(get_
 
     if num_entries > 100:  # todo set to 10
         if not TEST:
-            send_message(whatsapp_number, '''
-        Das Thema scheint kompliziert zu sein. Es gibt viele Fragen. 
-Wir leiten dich an einen Mitarbeiter weiter.''')
+            send_message(whatsapp_number, REDIRECT_TO_CS)
         return 'done'
 
     # Get or create the user session for the specific route
@@ -269,16 +249,16 @@ Wir leiten dich an einen Mitarbeiter weiter.''')
         print(f'=========PPPPRINT {missing_info}')
         if missing_info['missing_name']:
             if not TEST:
-                send_message(whatsapp_number, 'Wie ist dein Name?')
-            return 'Wie ist dein Name?'
+                send_message(whatsapp_number, ASK_NAME)
+            return ASK_NAME
         if missing_info['missing_date']:
             if not TEST:
-                send_message(whatsapp_number, 'An welchem Datum möchtest du einen Termin?')
-            return 'An welchem Datum möchtest du einen Termin?'
+                send_message(whatsapp_number, ASK_DATE)
+            return ASK_DATE
         if missing_info['missing_time']:
             if not TEST:
-                send_message(whatsapp_number, 'Um welche Uhrzeit möchtest du einen Termin?')
-            return 'Um welche Uhrzeit möchtest du einen Termin?'
+                send_message(whatsapp_number, ASK_TIME)
+            return ASK_TIME
     else:
         extracted_fields = identify_booking_fields(chatgpt_response)
         fields_to_update = identify_fields_to_update(whatsapp_number)
@@ -315,12 +295,12 @@ Wir leiten dich an einen Mitarbeiter weiter.''')
             booking_data.status = 'NO_INFO_ON_BOOKING'
             update_status(whatsapp_number, booking_data.status)
 
-            return 'Ich habe Sie nicht verstanden. Welchen Termin wollen Sie buchen?'
+            return NOT_UNDERSTOOD
 
     print('ok2')
 
     if booking_data.status == 'NO_TIME_OR_DATE':
-        return 'Kannst du mir nochmal sagen, wann du du genau einen Termin möchtest und für welchen Namen ich diesen buchen darf?'
+        return ASK_DATE_AGAIN
     else:
         if booking_data.isotime is not None:
             booking_data.available = get_google_calendar_availability(calendar_id, booking_data.isotime)
@@ -341,19 +321,19 @@ Wir leiten dich an einen Mitarbeiter weiter.''')
 
         # print(booking_answer, 'booking_answer')
         if not TEST:
-            send_message(whatsapp_number, 'Datum und Uhrzeit sind verfügbar. Wollen Sie den Termin buchen?')
+            send_message(whatsapp_number, ASK_CONFIRMATION)
     else:
         booking_data.status = 'NOT_AVAILABLE'
         update_status(whatsapp_number, booking_data.status)
 
         date_suggestions = get_next_available_slots("creativeassemblers@gmail.com", booking_data.isotime)
-        response = f'Der Termin ist nicht mehr frei. würde einer dieser passen?'
+        response = SUGGEST_ALTERNATIVES_INTRO
 
         for isodate in date_suggestions:
             suggested_date, suggested_time = convert_isotime_to_readable(isodate)
             response += f' \nDatum: {suggested_date}, Zeit: {suggested_time}'
 
-        response += '\nFalls nicht, dann bitte geben Sie uns einen neuen Wunschtermin mit Datum und Uhrzeit an.'
+        response += SUGGEST_ALTERNATIVES_OUTRO
         if not TEST:
             send_message(whatsapp_number, response)
 
@@ -372,7 +352,7 @@ Wir leiten dich an einen Mitarbeiter weiter.''')
         )
         booking_data.status = 'BOOKED'
         update_status(whatsapp_number, booking_data.status)
-        response = f'Der Termin wurde gebucht. Zeit: {booking_data.time}, Datum: {booking_data.date}, Name: {booking_data.name}'
+        response = BOOKING_CONFIRMATION + f'Zeit: {booking_data.time}, Datum: {booking_data.date}, Name: {booking_data.name}'
         if not TEST:
             send_message(whatsapp_number, response)
         return response
@@ -444,3 +424,6 @@ Wir leiten dich an einen Mitarbeiter weiter.''')
 
 
 # return status
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

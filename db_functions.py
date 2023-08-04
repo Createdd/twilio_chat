@@ -193,3 +193,24 @@ def update_booking_data_in_db(whatsapp_number, new_extracted_time, new_extracted
 
     finally:
         db.close()
+
+def store_conversation_in_db(whatsapp_number, Body, chatgpt_response, date, time, isotime, name, now, status,
+                             db):
+    try:
+        conversation = Conversation(
+            sender=whatsapp_number,
+            message=Body,
+            response=chatgpt_response,
+            date=date,
+            time=time,
+            name=name,
+            isotime=isotime,
+            time_of_inquiry=now,
+            status=status
+        )
+        db.add(conversation)
+        db.commit()
+        logger.info(f"Conversation #{conversation.id} stored in database")
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Error storing conversation in database: {e}")
