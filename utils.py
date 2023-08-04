@@ -1,5 +1,6 @@
 # Standard library import
 import logging
+import datetime
 
 # Third-party imports
 from twilio.rest import Client
@@ -16,6 +17,9 @@ twilio_number = config('TWILIO_NUMBER')
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+now = datetime.datetime.now()
+now = now.isoformat()
 
 # Sending message logic through Twilio Messaging API
 def send_message(to_number, body_text):

@@ -194,18 +194,26 @@ def update_booking_data_in_db(whatsapp_number, new_extracted_time, new_extracted
     finally:
         db.close()
 
-def store_conversation_in_db(whatsapp_number, Body, chatgpt_response, date, time, isotime, name, now, status,
+def store_conversation_in_db(whatsapp_number,
+                             message,
+                             chatgpt_response,
+                             date,
+                             time,
+                             isotime,
+                             name,
+                             time_of_inquiry,
+                             status,
                              db):
     try:
         conversation = Conversation(
             sender=whatsapp_number,
-            message=Body,
+            message=message,
             response=chatgpt_response,
             date=date,
             time=time,
             name=name,
             isotime=isotime,
-            time_of_inquiry=now,
+            time_of_inquiry=time_of_inquiry,
             status=status
         )
         db.add(conversation)

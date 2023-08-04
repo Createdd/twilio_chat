@@ -5,11 +5,14 @@ from fastapi import FastAPI, Form, Depends, Request
 from decouple import config
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
-import json
 
+from gpt_functions import get_gpt_response
 from templates import *
 from db_functions import *
-from utils import send_message, logger, convert_isotime_to_readable
+from booking import *
+from twilio_functions import redirect_to_cs_if_too_many_calls
+
+from utils import send_message, logger, convert_isotime_to_readable, now
 import datetime
 
 from nylas_integration import check_time_and_book, get_google_calendar_availability, book_event, get_next_available_slots
@@ -21,39 +24,9 @@ TEST=True
 
 CALENDAR_ID2 = config("GOOGLE_C2_ID")
 
-now = datetime.datetime.now()
-now = now.isoformat()
 
-NOW_PHRASE = f"The point of questioning is {now}."
-
-CONTEXT_FOR_GPT = """
-Du bist ein Servicebot für Buchungsanfragen.
-Extrahiere das Datum, die Uhrzeit und den Namen aus der Anfrage und gib die Informationen im folgenden JSON-Format aus:
-{"name": "NAME", "time": "HH:MM:SS”, "date":"YYYY-MM-DD", isotime:"YYYY-MM-DDTHH:MM:SS"}.
-Von dem Zeitpunkt der Anfrage sollen die Zeiten berechnet werden. wie zum beispiel "Übermorgen", "Morgen", etc.
-Überprüfe ob in der Anfrage sowohl ein Datum als auch eine Uhrzeit vorhanden ist. Wenn nicht dann frage jeweils nach dem fehlenden Teil.
-Nimm nicht irgendwelche Werte an.
-Wenn der Kunde nach "Morgen" fragt, evaluiere das Datum ausgehend von heute.
-Sollte kein Name in der Buchungsanfrage vorhanden sein, verwende None.
-Sollte kein Datum in der Buchungsanfrage vorhanden sein, verwende None. Datum ist hier als "date zu verstehen" und damit ist nur der kalender tag gemeint.
-Sollte keine Uhrzeit in der Buchungsanfrage vorhanden sein, verwende None.
-Achte darauf, dass die Ausgabe ausschließlich dieses JSON-Format enthält und verzichte auf jegliche Hinweise und Floskeln.
-Jede deiner Antworten darf nur im Schema: "name": "XXX", "time": "HH:MM:SS”, "date":"YYYY-MM-DD, isotime:"YYYY-MM-DDTHH:MM:SS" sein.
-"""
-# CONTEXT_FOR_GPT = """
-# This is the context. Do not repeat this or summarize it to the user.
-# You are a service bot that handles booking requests. You guide the customer to the point where he or she provides 3 pieces of information.
-# 1 Name, 2 Date, 3 Time.
-# Make sure that the customers gives these 3 pieces of information and if the conversion tends to go somewhere else bring it back to the booking.
-# If you have all the booking information, prompt the customer: "Lassen Sie mich überprüfen ob der Termin verfügbar ist. Datum: {date} Zeit: {time}."
-# This prompt is always necessary, because I use it to query my database. Make sure that the format of date is YYYY-MM-DD and the format of time is HH:MM:SS.
-# If the the schedule is available, ask the customer to confirm the booking, with the prompt 'Datum und Uhrzeit sind verfügbar. Wollen Sie den Termin buchen?'.
-# If the customer confirms the booking, send the prompt "Ich habe den Termin gebucht. Vielen Dank für Ihre Buchung."
-# """
 
 app = FastAPI()
-# Set up the OpenAI API client
-openai.api_key = config("OPENAI_API_KEY")
 
 calendar_id = CALENDAR_ID2
 
@@ -66,21 +39,6 @@ def get_db():
     finally:
         db.close()
 
-
-class BookingData:
-    def __init__(self):
-        self.name = None
-        self.time = None
-        self.date = None
-        self.isotime = None
-        self.available = None
-        self.status = None
-
-    def __str__(self):
-        return f"Name: {self.name}, Date: {self.date}, Time: {self.time}, ISO Time: {self.isotime}, Available: {self.available}, Status: {self.status}"
-
-
-booking_data = BookingData()
 
 
 @app.get("/")
@@ -112,75 +70,6 @@ async def index():
 #     return booking_data.status
 
 
-def identify_booking_fields(chatgpt_response):
-    print('RESPONSE for identifying fields', chatgpt_response)
-    booking_request = None
-
-    # Define the list of required fields and their corresponding error messages
-    required_fields = {
-        'name': 'MISSING_NAME',
-        'date': 'MISSING_DATE',
-        'time': 'MISSING_TIME',
-        'isotime': 'MISSING_ISOTIME',
-    }
-    try:
-        booking_request = json.loads(chatgpt_response)
-    except Exception as e:
-        print('Cannot JSON load response', e)
-
-    for field in required_fields:
-        if booking_request[field] is None:
-            continue
-        required_fields[field] = booking_request[field]
-
-    extracted_fields = required_fields
-    print('extracted_fields', extracted_fields)
-    return extracted_fields
-def identify_fields_to_update(whatsapp_number):
-    existing_fields = get_booking_data(whatsapp_number)
-
-    fields_to_update = []
-    for field in existing_fields:
-        # print('field', field, existing_fields[field] )
-        if existing_fields[field] is None:
-            fields_to_update.append(field)
-
-    #todo: add logic to update outdated fields
-    print('identify_fields_to_update', fields_to_update)
-    return fields_to_update
-
-
-
-
-def update_customer_data(fields_to_update):
-    # print('BOOKINGREQUEST', booking_request)
-    for field in fields_to_update:
-        try:
-            # print('fields', field, booking_request[field])
-            setattr(booking_data, field, fields_to_update[field])
-            # if booking_data[field] is None:
-            #     # print('triggered')
-            #     booking_data.status = required_fields[field]
-            #     booking_data[field] = extracted_fields[field]
-
-        except Exception as e:
-            # Handle any exceptions, logging, or error responses as needed
-            # booking_data.status = required_fields[field]
-            print('Error', fields_to_update[field], e)
-
-
-    # for field in booking_data.__dict__:
-    #     if field is None:
-    #         booking_data.status = required_fields[field]
-    booking_data.status = 'UPDATED_DATA'
-    print('FIELDS TO UPDATE', fields_to_update)
-    print('UPDATED BOOKING DATA: ', booking_data)
-    return booking_data.status
-
-
-
-
-
 @app.post("/message")
 async def reply(request: Request, Body: str = Form(), db: Session = Depends(get_db)):
     # Extract the phone number from the incoming webhook request
@@ -189,47 +78,16 @@ async def reply(request: Request, Body: str = Form(), db: Session = Depends(get_
     whatsapp_number = form_data['From'].split("whatsapp:")[-1]
     # print(f"Sending the ChatGPT response to this number: {whatsapp_number}")
 
-    num_entries, message_content = get_customer_conversations(whatsapp_number)
-    # print(num_entries)
+    num_entries, _message_content = get_customer_conversations(whatsapp_number)
+    redirect_to_cs_if_too_many_calls(whatsapp_number, num_entries, TEST)
 
-    if num_entries > 100:  # todo set to 10
-        if not TEST:
-            send_message(whatsapp_number, REDIRECT_TO_CS)
-        return 'done'
+    chatgpt_response = get_gpt_response(Body, TEST)
 
-    # Get or create the user session for the specific route
-    # user_session = db.query(UserSession).filter_by(user_id=whatsapp_number, route_name="message").first()
-    # if not user_session:
-    #     user_session = UserSession(user_id=whatsapp_number, route_name="message")
-    #     db.add(user_session)
-
-    # Call the OpenAI API to generate text with ChatGPT
-    messages = [{"role": "user", "content": Body}]
-    messages.append({"role": "system", "content": NOW_PHRASE})
-    messages.append({"role": "system", "content": CONTEXT_FOR_GPT})
-
-    if not TEST:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=messages,
-            max_tokens=200,
-            n=1,
-            stop=None,
-            temperature=0.5
-        )
-
-        chatgpt_response = response.choices[0].message.content
-    else:
-        chatgpt_response = Body
 #     chatgpt_response = '''{  "name": null,
 #   "time": "23:00:00",
 #   "date": "2023-07-27",
 #   "isotime": "2023-07-27T23:00:00"
 # }'''
-
-    # chatgpt_response = Body
-    # if not TEST:
-    #   send_message(whatsapp_number, chatgpt_response)  # for logging
 
     if is_number_in_database(whatsapp_number):
         print('number is in database')
@@ -268,15 +126,16 @@ async def reply(request: Request, Body: str = Form(), db: Session = Depends(get_
             new_fields[field] = extracted_fields[field]
         update_customer_data(new_fields)
 
-        store_conversation_in_db(whatsapp_number, Body,
-                                 chatgpt_response,
-                                 booking_data.date,
-                                 booking_data.time,
-                                 booking_data.isotime,
-                                 booking_data.name,
-                                 now,
-                                 booking_data.status,
-                                 db)
+        store_conversation_in_db(whatsapp_number=whatsapp_number,
+                                 message=Body,
+                                 chatgpt_response=chatgpt_response,
+                                 date=booking_data.date,
+                                 time=booking_data.time,
+                                 isotime=booking_data.isotime,
+                                 name=booking_data.name,
+                                 time_of_inquiry=now,
+                                 status=booking_data.status,
+                                 db=db)
 
     print('ok1')
     print('booking status', booking_data.status)
