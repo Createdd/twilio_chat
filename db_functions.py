@@ -5,6 +5,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from decouple import config
 from utils import logger
 from sqlalchemy.exc import SQLAlchemyError
+from utils import create_isotime
 
 
 url = URL.create(
@@ -163,13 +164,16 @@ def update_booking_data_in_db(whatsapp_number, new_extracted_time, new_extracted
         # Query the database for the existing conversation based on the WhatsApp number
         conversation = db.query(Conversation).filter_by(sender=whatsapp_number).first()
 
+        updated = []
+
         # If conversation exists, update the extracted_time, extracted_name, and extracted_date
         if conversation:
             # print(f"Got conv from db: {conversation.__dict__}")
             # Check if new extracted_time is available and update if so
             if conversation.time is None and new_extracted_time is not None:
                 conversation.time = new_extracted_time
-                print('updated time from {conversation.extracted_time} to {new_extracted_time}')
+                updated = updated.append(new_extracted_time)
+                print(f'updated time from {conversation.extracted_time} to {new_extracted_time}')
 
             # Check if new extracted_name is available and update if so
             if conversation.name is None and new_extracted_name is not None:
@@ -179,7 +183,15 @@ def update_booking_data_in_db(whatsapp_number, new_extracted_time, new_extracted
             # Check if new extracted_date is available and update if so
             if conversation.date is None and new_extracted_date is not None:
                 conversation.date = new_extracted_date
-                print('updated date from {conversation.extracted_date} to {new_extracted_date}')
+                updated = updated.append(new_extracted_time)
+                print(f'updated date from {conversation.extracted_date} to {new_extracted_date}')
+
+
+            if len(updated) > 0:
+                new_isotime = create_isotime(conversation.date, conversation.time)
+                conversation.isotime = new_isotime
+                print(f'updated date from {conversation.isotime} to {new_isotime}')
+
 
             db.commit()
             logger.info(f"Updated Booking Data for Conversation #{conversation.id}")

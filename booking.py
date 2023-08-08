@@ -1,5 +1,6 @@
 from db_functions import get_booking_data
 import json
+from utils import create_isotime
 
 
 class BookingData:
@@ -51,7 +52,6 @@ def identify_booking_fields(chatgpt_response):
         'name': 'MISSING_NAME',
         'date': 'MISSING_DATE',
         'time': 'MISSING_TIME',
-        'isotime': 'MISSING_ISOTIME',
     }
     try:
         booking_request = json.loads(chatgpt_response)
@@ -63,10 +63,14 @@ def identify_booking_fields(chatgpt_response):
             continue
         required_fields[field] = booking_request[field]
 
+    if required_fields['date'] and required_fields['time'] is not None:
+        required_fields['isotime'] = create_isotime(
+            required_fields['date'], required_fields['time'])
+
+
     extracted_fields = required_fields
     print('extracted_fields', extracted_fields)
     return extracted_fields
-
 
 def identify_fields_to_update(whatsapp_number):
     existing_fields = get_booking_data(whatsapp_number)

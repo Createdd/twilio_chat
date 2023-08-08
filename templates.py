@@ -13,3 +13,6 @@ SUGGEST_ALTERNATIVES_INTRO = 'Der Termin ist nicht mehr frei. würde einer diese
 SUGGEST_ALTERNATIVES_OUTRO = '\nFalls nicht, dann bitte geben Sie uns einen neuen Wunschtermin mit Datum und Uhrzeit an.'
 
 BOOKING_CONFIRMATION = 'Der Termin wurde gebucht.'
+
+# def BOOKING_CONFIRMATION(date, time):
+#     return f'Der Termin am {date} um {time} wurde gebucht.'

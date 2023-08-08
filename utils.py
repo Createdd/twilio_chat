@@ -42,3 +42,10 @@ def convert_isotime_to_readable(iso_time):
     time_str = time_dt.strftime('%H:%M:%S')
 
     return date_str, time_str
+
+import datetime
+
+def create_isotime(date, time):
+    date_time = datetime.datetime.strptime(date + " " + time, "%Y-%m-%d %H:%M:%S")
+    isotime = date_time.strftime("%Y-%m-%dT%H:%M:%S")
+    return isotime
