@@ -191,12 +191,23 @@ async def reply(request: Request, Body: str = Form(), db: Session = Depends(get_
             time_to_meet_in_iso=booking_data.isotime,
             calendar_id=CALENDAR_ID2
         )
-        booking_data.status = 'BOOKED'
-        update_status_in_db(whatsapp_number, booking_data.status)
-        response = BOOKING_CONFIRMATION + f'Zeit: {booking_data.time}, Datum: {booking_data.date}, Name: {booking_data.name}'
-        if not TEST:
-            send_message(whatsapp_number, response)
+        if booking_answer == "BOOKED":
+            print('BOOKING ANSWER', booking_answer)
+            booking_data.status = 'BOOKED'
+            update_status_in_db(whatsapp_number, booking_data.status)
+            response = BOOKING_CONFIRMATION + f'Zeit: {booking_data.time}, Datum: {booking_data.date}, Name: {booking_data.name}'
+            if not TEST:
+                send_message(whatsapp_number, response)
+        else:
+            response = booking_answer
+
         return response
+    # elif booking_data.status == 'BOOKED':
+    #     update_status_in_db(whatsapp_number, booking_data.status)
+    #     response = BOOKING_CONFIRMATION + f'Zeit: {booking_data.time}, Datum: {booking_data.date}, Name: {booking_data.name}'
+    #     if not TEST:
+    #         send_message(whatsapp_number, response)
+    #     return response
     else:
         if booking_data.isotime is not None:
             available = get_google_calendar_availability(

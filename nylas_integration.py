@@ -39,6 +39,11 @@ print(today)
 
 
 def calculate_time(time_to_meet_in_iso, unix=False):
+    print(time_to_meet_in_iso, type(time_to_meet_in_iso))
+    if type(time_to_meet_in_iso) != str:
+        time_to_meet_in_iso = time_to_meet_in_iso.isoformat()
+    print(time_to_meet_in_iso, type(time_to_meet_in_iso))
+
     start_time = parser.parse(time_to_meet_in_iso)
     start_time = start_time + timedelta(hours=-0)
     end_time = start_time + timedelta(minutes=30)
@@ -91,10 +96,10 @@ def book_event(title, location, description, participant, time_to_meet_in_iso, c
         event.calendar_id = calendar_id
         # event.save(notify_participants='true')
         event.save()
-        return 'Booking done'
+        return 'BOOKED'
     except Exception as e:
-        print(e)
-        return 'Booking failed'
+        print('from book_event: ', e)
+        return e
 
 
 
