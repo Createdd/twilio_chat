@@ -108,7 +108,7 @@ def check_last_entry(whatsapp_number):
     finally:
         db.close()
 
-def update_status(whatsapp_number, new_status):
+def update_status_in_db(whatsapp_number, new_status):
     # Function to update the status of an existing conversation in the database
     db = SessionLocal()
     try:
@@ -132,7 +132,7 @@ def update_status(whatsapp_number, new_status):
         db.close()
 
 
-def get_booking_data(whatsapp_number):
+def get_booking_data_from_db(whatsapp_number):
     db = SessionLocal()
     try:
         # Query the database for the existing conversation based on the WhatsApp number
@@ -147,7 +147,7 @@ def get_booking_data(whatsapp_number):
             if not field.startswith("_"):
                 booking_data[field] = conversation.__dict__[field]
 
-        print('Booking data from get_booking_data:', booking_data)
+        print('Booking data from get_booking_data_from_db:', booking_data)
         return booking_data
 
     except SQLAlchemyError as e:
@@ -190,7 +190,7 @@ def update_booking_data_in_db(whatsapp_number, new_extracted_time, new_extracted
             if len(updated) > 0:
                 new_isotime = create_isotime(conversation.date, conversation.time)
                 conversation.isotime = new_isotime
-                print(f'updated date from {conversation.isotime} to {new_isotime}')
+                print(f'updated isotime from {conversation.isotime} to {new_isotime}')
 
 
             db.commit()

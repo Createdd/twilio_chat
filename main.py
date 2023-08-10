@@ -91,17 +91,22 @@ async def reply(request: Request, Body: str = Form(), db: Session = Depends(get_
 
     if is_number_in_database(whatsapp_number):
         print('number is in database')
+        booking_data_from_db = get_booking_data_from_db(whatsapp_number)
+        booking_data = convert_booking_data_into_class(booking_data_from_db)
+        # print('converted booking data', booking_data)
         extracted_fields = identify_booking_fields(chatgpt_response)
         fields_to_update = identify_fields_to_update(whatsapp_number)
         print('FIELDS TO UPDATE', fields_to_update)
         new_fields = {}
         for field in fields_to_update:
             new_fields[field] = extracted_fields[field]
-        update_customer_data(new_fields)
+        booking_data = update_customer_data_in_class(booking_data, new_fields)
+        print(booking_data)
+        update_booking_data_in_db(whatsapp_number,
+                                  booking_data.time,
+                                  booking_data.name,
+                                  booking_data.date)
 
-        # print('extracted_fields', extracted_fields)
-        # todo only idetify above and do not change status
-        update_booking_data_in_db(whatsapp_number, booking_data.time, booking_data.name, booking_data.date)
 
         missing_info = check_last_entry(whatsapp_number)
         print(f'=========PPPPRINT {missing_info}')
@@ -119,13 +124,13 @@ async def reply(request: Request, Body: str = Form(), db: Session = Depends(get_
             return ASK_TIME
     else:
         extracted_fields = identify_booking_fields(chatgpt_response)
-        fields_to_update = identify_fields_to_update(whatsapp_number)
-        print('FIELDS TO UPDATE', fields_to_update)
+        # fields_to_update = identify_fields_to_update(whatsapp_number)
+        # print('FIELDS TO UPDATE', fields_to_update)
         new_fields = {}
-        for field in fields_to_update:
+        for field in extracted_fields:
             new_fields[field] = extracted_fields[field]
-        update_customer_data(new_fields)
-
+        booking_data = update_customer_data_in_class(new_fields)
+        booking_data = convert_booking_data_into_class(booking_data)
         store_conversation_in_db(whatsapp_number=whatsapp_number,
                                  message=Body,
                                  chatgpt_response=chatgpt_response,
@@ -138,69 +143,46 @@ async def reply(request: Request, Body: str = Form(), db: Session = Depends(get_
                                  db=db)
 
     print('ok1')
-    print('booking status', booking_data.status)
-    if booking_data.status == 'AVAILABLE':
-        print('AVAILABLE: ',chatgpt_response.lower())
+
+    # if booking_data.available is None:
+    #     # if not TEST:
+    #     #   send_message(whatsapp_number, 'Wir leiten dich an einen Mitarbeiter weiter.')
+    #     booking_data.status = 'NO_INFO_ON_AVAILABILITY'
+    #     update_status(whatsapp_number, booking_data.status)
+    #
+    #     return booking_data.status
+
+
+    print('----->>> booking test', booking_data.status)
+    if booking_data.status == 'NO_TIME_OR_DATE':
+        return ASK_DATE_AGAIN
+
+    elif booking_data.status == 'AVAILABLE':
+        print('RESPONSE:, ', chatgpt_response.lower())
         if 'ja' in chatgpt_response.lower():
             booking_data.status = 'READY_TO_BOOK'
-            update_status(whatsapp_number, booking_data.status)
+            update_status_in_db(whatsapp_number, booking_data.status)
 
         elif 'nein' in chatgpt_response.lower():
             booking_data.status = 'NO_INFO_ON_BOOKING'
-            update_status(whatsapp_number, booking_data.status)
+            update_status_in_db(whatsapp_number, booking_data.status)
 
             return 'Ok, wir suchen einen anderen Termin.'
-        else:
-            booking_data.status = 'NO_INFO_ON_BOOKING'
-            update_status(whatsapp_number, booking_data.status)
 
-            return NOT_UNDERSTOOD
-
-    print('ok2')
-
-    if booking_data.status == 'NO_TIME_OR_DATE':
-        return ASK_DATE_AGAIN
-    else:
-        if booking_data.isotime is not None:
-            booking_data.available = get_google_calendar_availability(calendar_id, booking_data.isotime)
-            print("??????????",booking_data.available, 'booking_data.available')
-
-
-    if booking_data.available is None:
-        # if not TEST:
-        #   send_message(whatsapp_number, 'Wir leiten dich an einen Mitarbeiter weiter.')
-        booking_data.status = 'NO_INFO_ON_AVAILABILITY'
-        update_status(whatsapp_number, booking_data.status)
-
-        return booking_data.status
-
-    if booking_data.available:
-        booking_data.status = 'AVAILABLE'
-        update_status(whatsapp_number, booking_data.status)
-
-        # print(booking_answer, 'booking_answer')
         if not TEST:
             send_message(whatsapp_number, ASK_CONFIRMATION)
-    else:
-        booking_data.status = 'NOT_AVAILABLE'
-        update_status(whatsapp_number, booking_data.status)
 
-        date_suggestions = get_next_available_slots("creativeassemblers@gmail.com", booking_data.isotime)
-        response = SUGGEST_ALTERNATIVES_INTRO
-
-        for isodate in date_suggestions:
-            suggested_date, suggested_time = convert_isotime_to_readable(isodate)
-            response += f' \nDatum: {suggested_date}, Zeit: {suggested_time}'
-
-        response += SUGGEST_ALTERNATIVES_OUTRO
-        if not TEST:
-            send_message(whatsapp_number, response)
-
-        return response
+        print('AVAILABLE: ', chatgpt_response.lower())
+        return ASK_CONFIRMATION
 
 
+        # else:
+        #     booking_data.status = 'NO_INFO_ON_BOOKING'
+        #     update_status_in_db(whatsapp_number, booking_data.status)
+        #
+        #     return NOT_UNDERSTOOD
 
-    if booking_data.status == 'READY_TO_BOOK':
+    elif booking_data.status == 'READY_TO_BOOK':
         booking_answer = book_event(
             title=f"Booking with {booking_data.name}",
             location="at office",
@@ -210,11 +192,43 @@ async def reply(request: Request, Body: str = Form(), db: Session = Depends(get_
             calendar_id=CALENDAR_ID2
         )
         booking_data.status = 'BOOKED'
-        update_status(whatsapp_number, booking_data.status)
+        update_status_in_db(whatsapp_number, booking_data.status)
         response = BOOKING_CONFIRMATION + f'Zeit: {booking_data.time}, Datum: {booking_data.date}, Name: {booking_data.name}'
         if not TEST:
             send_message(whatsapp_number, response)
         return response
+    else:
+        if booking_data.isotime is not None:
+            available = get_google_calendar_availability(
+                calendar_id,
+                booking_data.isotime)
+
+            print("??????????",available, 'available')
+
+            if available:
+                booking_data.status = 'AVAILABLE'
+                update_status_in_db(whatsapp_number, booking_data.status)
+
+            else:
+                booking_data.status = 'NOT_AVAILABLE'
+                update_status_in_db(whatsapp_number, booking_data.status)
+
+                date_suggestions = get_next_available_slots("creativeassemblers@gmail.com", booking_data.isotime)
+                response = SUGGEST_ALTERNATIVES_INTRO
+
+                for isodate in date_suggestions:
+                    suggested_date, suggested_time = convert_isotime_to_readable(isodate)
+                    response += f' \nDatum: {suggested_date}, Zeit: {suggested_time}'
+
+                response += SUGGEST_ALTERNATIVES_OUTRO
+                if not TEST:
+                    send_message(whatsapp_number, response)
+                return response
+
+print('ok2')
+
+
+
 
 
 
@@ -285,4 +299,4 @@ async def reply(request: Request, Body: str = Form(), db: Session = Depends(get_
 # return status
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info", reload=True)
