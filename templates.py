@@ -12,6 +12,8 @@ ASK_CONFIRMATION = 'Datum und Uhrzeit sind verfügbar. Wollen Sie den Termin buc
 SUGGEST_ALTERNATIVES_INTRO = 'Der Termin ist nicht mehr frei. würde einer dieser passen?'
 SUGGEST_ALTERNATIVES_OUTRO = '\nFalls nicht, dann bitte geben Sie uns einen neuen Wunschtermin mit Datum und Uhrzeit an.'
 
+ASK_FOR_NEW_DATE_AND_TIME = 'Schlagen Sie bitte einen neuen Termin mit Datum und Uhrzeit vor an dem Sie Zeit haben.'
+
 BOOKING_CONFIRMATION = 'Der Termin wurde gebucht.'
 
 # def BOOKING_CONFIRMATION(date, time):

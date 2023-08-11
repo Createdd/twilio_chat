@@ -216,6 +216,10 @@ test_time = str(datetime.now())
 def get_next_available_slots(email, suggested_time):
     # Convert the suggested time to a datetime object
     # print(suggested_time)
+
+    if type(suggested_time) != str:
+        suggested_time = suggested_time.isoformat()
+
     suggested_time_dt = datetime.fromisoformat(suggested_time)
     # print(suggested_time_dt)
     # Create a list of available time slots

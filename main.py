@@ -174,7 +174,14 @@ async def reply(request: Request, Body: str = Form(), db: Session = Depends(get_
 
         print('AVAILABLE: ', chatgpt_response.lower())
         return ASK_CONFIRMATION
+    elif booking_data.status == 'NOT_AVAILABLE':
+        booking_data.status = 'NO_INFO_ON_BOOKING'
+        update_status_in_db(whatsapp_number, booking_data.status)
 
+        if not TEST:
+            send_message(whatsapp_number, ASK_FOR_NEW_DATE_AND_TIME)
+
+        return ASK_FOR_NEW_DATE_AND_TIME
 
         # else:
         #     booking_data.status = 'NO_INFO_ON_BOOKING'
