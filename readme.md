@@ -22,4 +22,8 @@ https://creativeassemblers.notion.site/Creative-Assemblers-d7af6f24af84460db2a1f
 
 ![img.png](img.png)
 
-# 
+# Paths
+
+![img_1.png](img_1.png)
+
+More on https://www.canva.com/design/DAFqkTpN-I8/HDjZ8aUxc_eUw9dcrQOuIQ/edit
